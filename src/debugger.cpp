@@ -13,7 +13,11 @@ void procmsg(const char* format, ...) {
     va_end(args);
 }
 
-void run_debugger(pid_t child_pid) {
+Debugger::Debugger(pid_t target_pid){
+    debuggee = new Debuggee(target_pid);
+}
+
+void Debugger::run_debugger() {
     int wait_status;
     unsigned icounter = 0;
     procmsg("Debugger started");
@@ -22,7 +26,7 @@ void run_debugger(pid_t child_pid) {
 
     while (WIFSTOPPED(wait_status)) {
         icounter++;
-        if (ptrace(PTRACE_SINGLESTEP, child_pid, nullptr, nullptr) < 0) {
+        if (ptrace(PTRACE_SINGLESTEP, debuggee->get_pid(), nullptr, nullptr) < 0) {
             perror("ptrace error");
             return;
         }

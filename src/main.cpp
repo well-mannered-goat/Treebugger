@@ -1,5 +1,3 @@
-#include <iostream>
-#include <unistd.h>
 #include <sys/ptrace.h>
 #include "debugger.hpp"
 
@@ -27,7 +25,8 @@ int main(int argc, char** argv) {
         run_target(argv[1]);
     }
     else if (child_pid > 0) {
-        run_debugger(child_pid);
+        Debugger *dbgr = new Debugger(child_pid);
+        dbgr->run_debugger();
     }
     else {
         perror("fork");
