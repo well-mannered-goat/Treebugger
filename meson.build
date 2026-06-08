@@ -4,6 +4,8 @@ project('treebugger', 'cpp',
 
 inc_dir = include_directories('src/include')
 
+subdir('src/handlers')
+
 sources = [
     'src/main.cpp',
     'src/debugger.cpp',
@@ -11,6 +13,6 @@ sources = [
 ]
 
 executable('trdbg',
-    sources,
+    sources + handler_sources,
     include_directories: inc_dir,
     install: true)
