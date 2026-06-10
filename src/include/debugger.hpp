@@ -22,8 +22,11 @@ class Debugger{
         void print_disassembly(size_t instruction_count);
         bool trdbg_add_breakpoint(uint64_t addr);
         bool trdbg_remove_breakpoint(uint64_t addr);
+        int trdbg_fork_child();
+        void get_syscall_libc_addr();
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
         std::unordered_map<uint64_t, uint8_t> breakpoints;
+        uint64_t syscall_addr;
 
     public:
     Debugger();
