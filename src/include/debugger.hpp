@@ -2,6 +2,8 @@
 #include <sys/types.h>
 #include <vector>
 #include <map>
+#include <unordered_map>
+#include <cstdint>
 #include "debuggee.hpp"
 
 void procmsg(const char* format, ...);
@@ -18,7 +20,10 @@ class Debugger{
         int trdbg_step_instruction();
         int trdbg_continue();
         void print_disassembly(size_t instruction_count);
+        bool trdbg_add_breakpoint(uint64_t addr);
+        bool trdbg_remove_breakpoint(uint64_t addr);
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
+        std::unordered_map<uint64_t, uint8_t> breakpoints;
 
     public:
     Debugger();
@@ -40,7 +45,8 @@ class Debugger{
     void handle_disasm(const std::vector<std::string>& args);
     void handle_quit(const std::vector<std::string>& args);
     void run_debugger();
-
+    void handle_break(const std::vector<std::string>& args);
+    void handle_delete_break(const std::vector<std::string>& args);
 
 
 };

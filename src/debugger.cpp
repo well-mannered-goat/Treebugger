@@ -38,6 +38,10 @@ void Debugger::initialize_commands(){
     command_map["q"] = &Debugger::handle_quit;
     command_map["quit"] = &Debugger::handle_quit;
     command_map["exit"] = &Debugger::handle_quit;
+    command_map["break"] = &Debugger::handle_break;
+    command_map["b"] = &Debugger::handle_break;
+    command_map["delete"] = &Debugger::handle_delete_break;
+    command_map["d"] = &Debugger::handle_delete_break;
 }
 
 
@@ -186,8 +190,50 @@ void Debugger::print_disassembly(size_t instruction_count) {
     cs_close(&handle);
 }
 
-void Debugger::handle_quit(const std::vector<std::string>& args) {
-    (void)args;
-    procmsg("Exiting debugger.");
-    std::exit(0);
+bool Debugger::trdbg_add_breakpoint(uint64_t addr) {
+    if (breakpoints.find(addr) != breakpoints.end()) {
+        return false;
+    }
+
+    errno = 0;
+    long word = ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), addr, nullptr);
+    if (word == -1 && errno != 0) {
+        perror("ptrace peektext failed during breakpoint addition");
+        return false;
+    }
+
+    uint8_t original_byte = static_cast<uint8_t>(word & 0xFF);
+    breakpoints[addr] = original_byte;
+
+    long modified_word = (word & ~0xFF) | 0xCC;
+    if (ptrace(PTRACE_POKETEXT, debuggee->get_pid(), addr, modified_word) < 0) {
+        perror("ptrace poketext failed during breakpoint addition");
+        breakpoints.erase(addr);
+        return false;
+    }
+
+    return true;
+}
+
+bool Debugger::trdbg_remove_breakpoint(uint64_t addr) {
+    auto it = breakpoints.find(addr);
+    if (it == breakpoints.end()) {
+        return false;
+    }
+
+    errno = 0;
+    long word = ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), addr, nullptr);
+    if (word == -1 && errno != 0) {
+        perror("ptrace peektext failed during breakpoint removal");
+        return false;
+    }
+
+    long modified_word = (word & ~0xFF) | it->second;
+    if (ptrace(PTRACE_POKETEXT, debuggee->get_pid(), addr, modified_word) < 0) {
+        perror("ptrace poketext failed during breakpoint removal");
+        return false;
+    }
+
+    breakpoints.erase(it);
+    return true;
 }

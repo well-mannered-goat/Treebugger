@@ -150,3 +150,63 @@ void Debugger::handle_disasm(const std::vector<std::string>& args) {
 
     print_disassembly(count);
 }
+
+void Debugger::handle_quit(const std::vector<std::string>& args) {
+    (void)args;
+    procmsg("Exiting debugger.");
+    std::exit(0);
+}
+
+void Debugger::handle_break(const std::vector<std::string>& args) {
+    uint64_t addr = 0;
+
+    if (args.empty()) {
+        struct user_regs_struct regs;
+        if (!trdbg_read_registers(regs)) {
+            std::cerr << "[ERROR] Could not read registers to fetch current RIP." << std::endl;
+            return;
+        }
+        addr = regs.rip;
+    } else {
+        try {
+            addr = std::stoull(args[0], nullptr, 0);
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Invalid address format: " << args[0] << std::endl;
+            return;
+        }
+    }
+
+    if (trdbg_add_breakpoint(addr)) {
+        procmsg("Breakpoint set successfully at address 0x%016llx", addr);
+    } else {
+        std::cerr << "[WARNING] Breakpoint already exists or failed to set at 0x" 
+                  << std::hex << addr << std::dec << std::endl;
+    }
+}
+
+void Debugger::handle_delete_break(const std::vector<std::string>& args) {
+    uint64_t addr = 0;
+
+    if (args.empty()) {
+        struct user_regs_struct regs;
+        if (!trdbg_read_registers(regs)) {
+            std::cerr << "[ERROR] Could not read registers to fetch current RIP." << std::endl;
+            return;
+        }
+        addr = regs.rip;
+    } else {
+        try {
+            addr = std::stoull(args[0], nullptr, 0);
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Invalid address format: " << args[0] << std::endl;
+            return;
+        }
+    }
+
+    if (trdbg_remove_breakpoint(addr)) {
+        procmsg("Breakpoint removed successfully from address 0x%016llx", addr);
+    } else {
+        std::cerr << "[ERROR] No active breakpoint found at address 0x" 
+                  << std::hex << addr << std::dec << std::endl;
+    }
+}
