@@ -49,18 +49,14 @@ void Debugger::run_debugger() {
   procmsg("Debugger started");
   procmsg("PID is: %d", debuggee->get_pid());
 
-  if (ptrace(PTRACE_SETOPTIONS, debuggee->get_pid(), nullptr,
-             PTRACE_EVENT_FORK) < 0) {
-    procmsg("Cannot set option for PTRACE_EVENT_FORK to the child, use this as "
-            "a linear debugger");
-  }
-
   waitpid(debuggee->get_pid(), &wait_status, 0);
 
   if (WIFSTOPPED(wait_status)) {
     get_syscall_libc_addr();
     procmsg("Child stopped at startup. Ready for commands.");
   }
+
+  trdbg_fork_child();
 
   while (true) {
     handle_user_input();
@@ -242,7 +238,8 @@ bool Debugger::trdbg_remove_breakpoint(uint64_t addr) {
   return true;
 }
 
-static int get_syscall_addr(uint64_t start_addr, uint64_t end_addr, int pid) {
+static uint64_t get_syscall_addr(uint64_t start_addr, uint64_t end_addr,
+                                 int pid) {
   for (uint64_t addr = start_addr; addr < end_addr; addr = addr + 8) {
     uint64_t word = ptrace(PTRACE_PEEKTEXT, pid, addr, nullptr);
     for (int i = 0; i < 7; i++) {
@@ -297,7 +294,44 @@ void Debugger::get_syscall_libc_addr() {
   }
 }
 
-// int Debugger::trdbg_fork_child(){
-//     int pid = debuggee->get_pid();
+int Debugger::trdbg_fork_child() {
+  int pid = debuggee->get_pid();
 
-// }
+  struct user_regs_struct saved_regs;
+  struct user_regs_struct regs;
+
+  trdbg_read_registers(saved_regs);
+  regs = saved_regs;
+
+  regs.rax = 57; // SYS_fork
+  regs.rip = syscall_addr;
+
+  trdbg_write_registers(regs);
+  cout << hex << regs.rip << endl;
+  if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0) {
+    perror("PTRACE_SINGLESTEP");
+    trdbg_write_registers(saved_regs);
+    return -1;
+  }
+
+  int status;
+  waitpid(pid, &status, 0);
+
+  trdbg_read_registers(regs);
+  cout << hex << regs.rip << endl;
+  long ret = regs.rax;
+
+  cout << "[TRDBG] fork syscall returned: " << ret << endl;
+
+  if (ret > 0) {
+    cout << "[TRDBG] fork succeeded, child pid = " << dec << ret << endl;
+  } else if (ret == 0) {
+    cout << "[TRDBG] currently executing in child" << endl;
+  } else {
+    cout << "[TRDBG] fork failed, errno = " << dec << -ret << endl;
+  }
+
+  trdbg_write_registers(saved_regs);
+
+  return ret;
+}
