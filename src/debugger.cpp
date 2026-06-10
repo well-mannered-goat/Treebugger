@@ -4,8 +4,11 @@
 #include <cstdio>
 #include <cstdarg>
 #include <sstream>
+#include <cstdint>
+#include <cstring>
 #include <sys/user.h>
 #include <iomanip>
+#include <capstone/capstone.h>
 using namespace std;
 
 void procmsg(const char* format, ...) {
@@ -30,7 +33,11 @@ void Debugger::initialize_commands(){
     command_map["step"] = &Debugger::handle_step;
     command_map["continue"] = &Debugger::handle_continue;
     command_map["register_read"] = &Debugger::handle_read_registers;
-    command_map["register_write"] = &Debugger::handle_write_registers;  
+    command_map["register_write"] = &Debugger::handle_write_registers;
+    command_map["disasm"] = &Debugger::handle_disasm;
+    command_map["q"] = &Debugger::handle_quit;
+    command_map["quit"] = &Debugger::handle_quit;
+    command_map["exit"] = &Debugger::handle_quit;
 }
 
 
@@ -126,4 +133,61 @@ std::vector<RegisterDetails> Debugger::get_register_map(struct user_regs_struct&
         {"r12", &regs.r12}, {"r13", &regs.r13}, {"r14", &regs.r14}, {"r15", &regs.r15},
         {"rip", &regs.rip}, {"eflags", &regs.eflags}
     };
+}
+
+void Debugger::print_disassembly(size_t instruction_count) {
+    struct user_regs_struct regs;
+    if (ptrace(PTRACE_GETREGS, debuggee->get_pid(), nullptr, &regs) < 0) {
+        perror("ptrace getregs failed");
+        return;
+    }
+    uint64_t current_rip = regs.rip;
+
+    const size_t buffer_size = 64;
+    uint8_t code_buffer[buffer_size];
+    
+    for (size_t i = 0; i < buffer_size; i += sizeof(long)) {
+        long word = ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), current_rip + i, nullptr);
+        if (word == -1 && errno != 0) {
+            perror("ptrace peektext failed");
+            return;
+        }
+        std::memcpy(code_buffer + i, &word, sizeof(long));
+    }
+
+    csh handle;
+    if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
+        std::cerr << "Capstone init failed" << std::endl;
+        return;
+    }
+
+    cs_insn *insn;
+    size_t count = cs_disasm(handle, code_buffer, buffer_size, current_rip, instruction_count, &insn);
+    
+    if (count > 0) {
+        procmsg("--- Disassembly ---");
+        for (size_t i = 0; i < count; i++) {
+            std::string marker = (insn[i].address == current_rip) ? " => " : "    ";
+            
+            std::cout << marker 
+                      << "0x" 
+                      << std::right << std::setfill('0') << std::setw(16) << std::hex << insn[i].address 
+                      << ":  "
+                      << std::left << std::setfill(' ') << std::setw(10) << insn[i].mnemonic << "  "
+                      << insn[i].op_str 
+                      << std::endl;
+        }
+        cs_free(insn, count);
+    } else {
+        std::cerr << "Disassembly failed" << std::endl;
+    }
+
+    std::cout << std::dec << std::setfill(' ') << std::left;
+    cs_close(&handle);
+}
+
+void Debugger::handle_quit(const std::vector<std::string>& args) {
+    (void)args;
+    procmsg("Exiting debugger.");
+    std::exit(0);
 }

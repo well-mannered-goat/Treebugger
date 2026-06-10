@@ -6,15 +6,13 @@ using namespace std;
 
 void Debugger::handle_step(const vector<string>& args) {
     (void)args;
-    
     procmsg("Stepping target forward by 1 instruction...");
-    
     int err = this->trdbg_step_instruction();
     if (err == -1) {
         cerr << "[ERROR] Internal ptrace error during single-step." << endl;
     }
     else if (err == 0) {
-        procmsg("Step successful.");
+        print_disassembly(5);
     }
     else if (err == 1) {
         procmsg("The target process has finished execution and exited.");
@@ -26,15 +24,13 @@ void Debugger::handle_step(const vector<string>& args) {
 
 void Debugger::handle_continue(const vector<string>& args) {
     (void)args;
-    
     procmsg("Resuming execution path...");
-    
     int err = this->trdbg_continue();
     if (err == -1) {
         cerr << "[ERROR] Internal ptrace error during continue." << endl;
     }
     else if (err == 0) {
-        procmsg("Target hit a breakpoint or hardware event.");
+        print_disassembly(5);
     }
     else if (err == 1) {
         procmsg("The target process has finished execution and exited.");
@@ -132,4 +128,25 @@ void Debugger::handle_write_registers(const std::vector<std::string>& args) {
     } else {
         cerr << "[ERROR] Failed saving new register state via ptrace." << endl;
     }
+}
+
+void Debugger::handle_disasm(const std::vector<std::string>& args) {
+    size_t count = 5;
+
+    if (!args.empty()) {
+        try {
+            long val = std::stol(args[0]);
+            if (val > 0) {
+                count = static_cast<size_t>(val);
+            } else {
+                std::cerr << "[ERROR] Count must be greater than 0." << std::endl;
+                return;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Invalid instruction count: " << args[0] << std::endl;
+            return;
+        }
+    }
+
+    print_disassembly(count);
 }

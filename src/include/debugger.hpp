@@ -17,6 +17,7 @@ class Debugger{
         bool trdbg_write_registers(const struct user_regs_struct& regs);
         int trdbg_step_instruction();
         int trdbg_continue();
+        void print_disassembly(size_t instruction_count);
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
 
     public:
@@ -36,6 +37,8 @@ class Debugger{
     void handle_continue(const vector<string> &args);
     void handle_read_registers(const std::vector<std::string>& args);
     void handle_write_registers(const std::vector<std::string>& args);
+    void handle_disasm(const std::vector<std::string>& args);
+    void handle_quit(const std::vector<std::string>& args);
     void run_debugger();
 
 

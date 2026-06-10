@@ -4,6 +4,8 @@ project('treebugger', 'cpp',
 
 inc_dir = include_directories('src/include')
 
+capstone_dep = dependency('capstone')
+
 subdir('src/handlers')
 
 sources = [
@@ -15,4 +17,5 @@ sources = [
 executable('trdbg',
     sources + handler_sources,
     include_directories: inc_dir,
+    dependencies: [capstone_dep],
     install: true)
