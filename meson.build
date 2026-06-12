@@ -11,7 +11,8 @@ subdir('src/handlers')
 sources = [
     'src/main.cpp',
     'src/debugger.cpp',
-    'src/debuggee.cpp'
+    'src/debuggee.cpp',
+    'src/debuggee_node.cpp'
 ]
 
 executable('trdbg',

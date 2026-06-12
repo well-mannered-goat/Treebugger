@@ -4,7 +4,7 @@
 #include <map>
 #include <unordered_map>
 #include <cstdint>
-#include "debuggee.hpp"
+#include "debuggee_node.hpp"
 
 void procmsg(const char* format, ...);
 
@@ -24,6 +24,7 @@ class Debugger{
         bool trdbg_remove_breakpoint(uint64_t addr);
         int trdbg_fork_child();
         void get_syscall_libc_addr();
+        bool trdbg_attach_new_child(int pid);
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
         std::unordered_map<uint64_t, uint8_t> breakpoints;
         uint64_t syscall_addr;
@@ -34,6 +35,8 @@ class Debugger{
     Debugger(pid_t target_pid);
 
     Debuggee *debuggee;
+    Debuggee_Node *root;
+    Debuggee_Node *curr;
 
     using CommandHandler = void (Debugger::*)(const std::vector<std::string>& args);
     map<std::string, CommandHandler> command_map;
@@ -50,6 +53,7 @@ class Debugger{
     void run_debugger();
     void handle_break(const std::vector<std::string>& args);
     void handle_delete_break(const std::vector<std::string>& args);
+    void handle_add_checkpoint(const std::vector<std::string> &args);
 
 
 };

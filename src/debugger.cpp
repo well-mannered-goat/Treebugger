@@ -23,11 +23,15 @@ void procmsg(const char *format, ...) {
 }
 
 Debugger::Debugger(pid_t target_pid) {
-  debuggee = new Debuggee(target_pid);
+  root = new Debuggee_Node(target_pid);
+  curr = root;
+  debuggee = root->dbgee;
   initialize_commands();
 }
 
-Debugger::~Debugger() { delete debuggee; }
+Debugger::~Debugger() { 
+  delete root;
+}
 
 void Debugger::initialize_commands() {
   command_map["step"] = &Debugger::handle_step;
@@ -42,21 +46,20 @@ void Debugger::initialize_commands() {
   command_map["b"] = &Debugger::handle_break;
   command_map["delete"] = &Debugger::handle_delete_break;
   command_map["d"] = &Debugger::handle_delete_break;
+  command_map["checkpoint"] = &Debugger::handle_add_checkpoint;
 }
 
 void Debugger::run_debugger() {
   int wait_status;
   procmsg("Debugger started");
-  procmsg("PID is: %d", debuggee->get_pid());
+  procmsg("PID is: %d", root->dbgee->get_pid());
 
-  waitpid(debuggee->get_pid(), &wait_status, 0);
+  waitpid(root->dbgee->get_pid(), &wait_status, 0);
 
   if (WIFSTOPPED(wait_status)) {
     get_syscall_libc_addr();
     procmsg("Child stopped at startup. Ready for commands.");
   }
-
-  trdbg_fork_child();
 
   while (true) {
     handle_user_input();
@@ -64,7 +67,7 @@ void Debugger::run_debugger() {
 }
 
 int Debugger::trdbg_step_instruction() {
-  if (ptrace(PTRACE_SINGLESTEP, debuggee->get_pid(), nullptr, nullptr) < 0) {
+  if (ptrace(PTRACE_SINGLESTEP, root->dbgee->get_pid(), nullptr, nullptr) < 0) {
     perror("ptrace singlestep failed");
     return -1;
   }
@@ -325,6 +328,12 @@ int Debugger::trdbg_fork_child() {
 
   if (ret > 0) {
     cout << "[TRDBG] fork succeeded, child pid = " << dec << ret << endl;
+    int wait_status;
+
+    kill(ret, SIGSTOP);
+    if (WIFSTOPPED(wait_status)) {
+      procmsg("Child stopped at startup. Ready for commands.");
+    }
   } else if (ret == 0) {
     cout << "[TRDBG] currently executing in child" << endl;
   } else {
@@ -334,4 +343,19 @@ int Debugger::trdbg_fork_child() {
   trdbg_write_registers(saved_regs);
 
   return ret;
+}
+
+bool Debugger::trdbg_attach_new_child(int pid){
+  int ret = ptrace(PTRACE_ATTACH, pid, nullptr, nullptr);
+  if(ret == -1){
+    cout<<"Error number is: "<<errno<<endl;
+    cout<<"Error attaching to process: "<<pid<<endl;
+    return false;
+  }
+
+  Debuggee_Node *child = new Debuggee_Node(pid, curr, nullptr);
+  curr = child;
+  debuggee = curr->dbgee;
+  cout<<"New child created, debuggee is process: "<<debuggee->get_pid()<<endl;
+  return true;
 }
