@@ -214,14 +214,9 @@ void Debugger::handle_delete_break(const std::vector<std::string> &args) {
 }
 
 void Debugger::handle_add_checkpoint(const std::vector<std::string> &args){
-  int ret = trdbg_fork_child();
-  if(ret > 0){
-    if(trdbg_attach_new_child(ret)){
+  int pid = trdbg_fork_child();
+  if(pid > 0){
       procmsg("Checkpoint added");
-    }
-    else{
-      procmsg("Unable to add checkpoint");
-    }
   }
   else{
     procmsg("Unable to add checkpoint");

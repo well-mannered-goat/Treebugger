@@ -29,9 +29,7 @@ Debugger::Debugger(pid_t target_pid) {
   initialize_commands();
 }
 
-Debugger::~Debugger() { 
-  delete root;
-}
+Debugger::~Debugger() { delete root; }
 
 void Debugger::initialize_commands() {
   command_map["step"] = &Debugger::handle_step;
@@ -49,6 +47,10 @@ void Debugger::initialize_commands() {
   command_map["checkpoint"] = &Debugger::handle_add_checkpoint;
 }
 
+static bool apply_trace_fork_option(int pid) {
+  int ret = ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK);
+  return ret != -1;
+}
 void Debugger::run_debugger() {
   int wait_status;
   procmsg("Debugger started");
@@ -59,6 +61,9 @@ void Debugger::run_debugger() {
   if (WIFSTOPPED(wait_status)) {
     get_syscall_libc_addr();
     procmsg("Child stopped at startup. Ready for commands.");
+    if (!apply_trace_fork_option(root->dbgee->get_pid())) {
+      procmsg("Cannot apply PTRACE_O_TRACEFORK option");
+    }
   }
 
   while (true) {
@@ -145,8 +150,7 @@ Debugger::get_register_map(struct user_regs_struct &regs) {
 
 void Debugger::print_disassembly(size_t instruction_count) {
   struct user_regs_struct regs;
-  if (ptrace(PTRACE_GETREGS, debuggee->get_pid(), nullptr, &regs) < 0) {
-    perror("ptrace getregs failed");
+  if (!trdbg_read_registers(regs)){
     return;
   }
   uint64_t current_rip = regs.rip;
@@ -308,9 +312,10 @@ int Debugger::trdbg_fork_child() {
 
   regs.rax = 57; // SYS_fork
   regs.rip = syscall_addr;
+  cout<<hex<<syscall_addr<<endl;
 
   trdbg_write_registers(regs);
-  cout << hex << regs.rip << endl;
+
   if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0) {
     perror("PTRACE_SINGLESTEP");
     trdbg_write_registers(saved_regs);
@@ -320,42 +325,45 @@ int Debugger::trdbg_fork_child() {
   int status;
   waitpid(pid, &status, 0);
 
-  trdbg_read_registers(regs);
-  cout << hex << regs.rip << endl;
-  long ret = regs.rax;
+  int signal = WSTOPSIG(status);
+  unsigned int event = (unsigned int)status >> 16;
 
-  cout << "[TRDBG] fork syscall returned: " << ret << endl;
+  if (event == PTRACE_EVENT_FORK) {
+    unsigned long child_pid = 0;
 
-  if (ret > 0) {
-    cout << "[TRDBG] fork succeeded, child pid = " << dec << ret << endl;
-    int wait_status;
-
-    kill(ret, SIGSTOP);
-    if (WIFSTOPPED(wait_status)) {
-      procmsg("Child stopped at startup. Ready for commands.");
+    if (ptrace(PTRACE_GETEVENTMSG, pid, nullptr, &child_pid) == -1) {
+      perror("PTRACE_GETEVENTMSG");
+      trdbg_write_registers(saved_regs);
+      return -1;
     }
-  } else if (ret == 0) {
-    cout << "[TRDBG] currently executing in child" << endl;
-  } else {
-    cout << "[TRDBG] fork failed, errno = " << dec << -ret << endl;
+
+    cout << "[TRDBG] Child PID: " << child_pid << endl;
+
+    trdbg_write_registers(saved_regs);
+
+    Debuggee_Node *child_debuggee = new Debuggee_Node(static_cast<int>(child_pid), curr, nullptr);
+    curr->child = child_debuggee;
+    curr = child_debuggee;
+    debuggee = curr->dbgee;
+
+    int status;
+  waitpid(child_pid, &status, 0);
+  if (WIFSTOPPED(status)) {
+    procmsg("Child stopped at startup. Ready for commands.");
+    if (!apply_trace_fork_option(pid)) {
+      procmsg("Cannot apply PTRACE_O_TRACEFORK option");
+    }
+    if(!trdbg_write_registers(saved_regs)){
+      procmsg("Unable to reset registers for the new child");
+    }
+    return true;
   }
+
+    return static_cast<int>(child_pid);
+  }
+
+  cout << "[TRDBG] Unexpected stop received" << endl;
 
   trdbg_write_registers(saved_regs);
-
-  return ret;
-}
-
-bool Debugger::trdbg_attach_new_child(int pid){
-  int ret = ptrace(PTRACE_ATTACH, pid, nullptr, nullptr);
-  if(ret == -1){
-    cout<<"Error number is: "<<errno<<endl;
-    cout<<"Error attaching to process: "<<pid<<endl;
-    return false;
-  }
-
-  Debuggee_Node *child = new Debuggee_Node(pid, curr, nullptr);
-  curr = child;
-  debuggee = curr->dbgee;
-  cout<<"New child created, debuggee is process: "<<debuggee->get_pid()<<endl;
-  return true;
+  return -1;
 }
