@@ -51,4 +51,6 @@ public:
   void handle_break(const std::vector<std::string> &args);
   void handle_delete_break(const std::vector<std::string> &args);
   void handle_add_checkpoint(const std::vector<std::string> &args);
+  void handle_print_tree(const std::vector<std::string> &args);
+  void handle_switch_checkpoint(const std::vector<std::string> &args);
 };

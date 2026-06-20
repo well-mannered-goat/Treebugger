@@ -22,4 +22,5 @@ public:
   Debuggee_Node *find_checkpoint(int checkpoint_id);
 
   void print_tree();
+  void print_tree(Debuggee_Node *node, const string &prefix, bool is_last);
 };

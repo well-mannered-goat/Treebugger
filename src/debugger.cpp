@@ -45,6 +45,8 @@ void Debugger::initialize_commands() {
   command_map["delete"] = &Debugger::handle_delete_break;
   command_map["d"] = &Debugger::handle_delete_break;
   command_map["checkpoint"] = &Debugger::handle_add_checkpoint;
+  command_map["print_tree"] = &Debugger::handle_print_tree;
+  command_map["switch_checkpoint"] = &Debugger::handle_switch_checkpoint;
 }
 
 Debuggee *Debugger::get_debuggee() {
@@ -55,6 +57,7 @@ static bool apply_trace_fork_option(int pid) {
   int ret = ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK);
   return ret != -1;
 }
+
 void Debugger::run_debugger() {
   int wait_status;
   procmsg("Debugger started");
@@ -300,6 +303,7 @@ void Debugger::get_syscall_libc_addr() {
 
 int Debugger::trdbg_fork_child() {
   int pid = get_debuggee()->get_pid();
+  cout << pid << endl;
 
   struct user_regs_struct saved_regs;
   struct user_regs_struct regs;
@@ -307,9 +311,11 @@ int Debugger::trdbg_fork_child() {
   trdbg_read_registers(saved_regs);
   regs = saved_regs;
 
+  cout << saved_regs.rax << endl;
+  cout << saved_regs.rip << endl;
+
   regs.rax = 57; // SYS_fork
   regs.rip = syscall_addr;
-  cout << hex << syscall_addr << endl;
 
   trdbg_write_registers(regs);
 
@@ -325,6 +331,10 @@ int Debugger::trdbg_fork_child() {
   int signal = WSTOPSIG(status);
   unsigned int event = (unsigned int)status >> 16;
 
+  cout << "status: " << status << endl;
+  cout << "signal: " << signal << endl;
+  cout << "event:" << event << endl;
+
   if (event == PTRACE_EVENT_FORK) {
     unsigned long child_pid = 0;
 
@@ -336,10 +346,6 @@ int Debugger::trdbg_fork_child() {
 
     cout << "[TRDBG] Child PID: " << dec << child_pid << endl;
 
-    trdbg_write_registers(saved_regs);
-
-    tree->create_child(child_pid);
-
     int status;
     waitpid(child_pid, &status, 0);
     if (WIFSTOPPED(status)) {
@@ -347,6 +353,17 @@ int Debugger::trdbg_fork_child() {
       if (!apply_trace_fork_option(child_pid)) {
         procmsg("Cannot apply PTRACE_O_TRACEFORK option");
       }
+
+      if (ptrace(PTRACE_SINGLESTEP, pid, nullptr, nullptr) < 0) {
+        perror("PTRACE_SINGLESTEP to clear event");
+      }
+
+      int parent_step_status;
+      waitpid(pid, &parent_step_status, 0);
+
+      trdbg_write_registers(saved_regs);
+
+      tree->create_child(child_pid);
       if (!trdbg_write_registers(saved_regs)) {
         procmsg("Unable to reset registers for the new child");
       }

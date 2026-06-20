@@ -212,3 +212,29 @@ void Debugger::handle_add_checkpoint(const std::vector<std::string> &args) {
     procmsg("Unable to add checkpoint");
   }
 }
+
+void Debugger::handle_print_tree(const std::vector<std::string> &args) {
+  if (!tree) {
+    cout << "[ERROR] Checkpoint Tree not generated" << endl;
+    return;
+  }
+
+  tree->print_tree();
+}
+
+void Debugger::handle_switch_checkpoint(const std::vector<std::string> &args) {
+  if (args.empty()) {
+    cout << "[ERROR] Provide a checkpoint ID to switch to" << endl;
+  }
+  int new_chkpt = stoi(args[0]);
+  if (!tree) {
+    cout << "[ERROR] Checkpoint Tree not generated" << endl;
+    return;
+  }
+  Debuggee_Node *new_node = tree->find_checkpoint(new_chkpt);
+  if (!new_node) {
+    cout << "[ERROR] Checkpoint with id: " << new_chkpt << " does not exists" << endl;
+    return;
+  }
+  tree->switch_current(new_node);
+}
