@@ -27,7 +27,9 @@ Debugger::Debugger(pid_t target_pid) {
   initialize_commands();
 }
 
-Debugger::~Debugger() { delete tree; }
+Debugger::~Debugger() {
+  delete tree;
+}
 
 void Debugger::initialize_commands() {
   command_map["step"] = &Debugger::handle_step;
@@ -45,7 +47,7 @@ void Debugger::initialize_commands() {
   command_map["checkpoint"] = &Debugger::handle_add_checkpoint;
 }
 
-Debuggee* Debugger::get_debuggee(){
+Debuggee *Debugger::get_debuggee() {
   return tree->get_current()->dbgee;
 }
 
@@ -140,19 +142,16 @@ bool Debugger::trdbg_write_registers(const struct user_regs_struct &regs) {
 }
 
 // Helper function to map string names dynamically to the struct fields
-std::vector<RegisterDetails>
-Debugger::get_register_map(struct user_regs_struct &regs) {
-  return {{"rax", &regs.rax}, {"rbx", &regs.rbx}, {"rcx", &regs.rcx},
-          {"rdx", &regs.rdx}, {"rsi", &regs.rsi}, {"rdi", &regs.rdi},
-          {"rbp", &regs.rbp}, {"rsp", &regs.rsp}, {"r8", &regs.r8},
-          {"r9", &regs.r9},   {"r10", &regs.r10}, {"r11", &regs.r11},
-          {"r12", &regs.r12}, {"r13", &regs.r13}, {"r14", &regs.r14},
+std::vector<RegisterDetails> Debugger::get_register_map(struct user_regs_struct &regs) {
+  return {{"rax", &regs.rax}, {"rbx", &regs.rbx}, {"rcx", &regs.rcx},      {"rdx", &regs.rdx}, {"rsi", &regs.rsi},
+          {"rdi", &regs.rdi}, {"rbp", &regs.rbp}, {"rsp", &regs.rsp},      {"r8", &regs.r8},   {"r9", &regs.r9},
+          {"r10", &regs.r10}, {"r11", &regs.r11}, {"r12", &regs.r12},      {"r13", &regs.r13}, {"r14", &regs.r14},
           {"r15", &regs.r15}, {"rip", &regs.rip}, {"eflags", &regs.eflags}};
 }
 
 void Debugger::print_disassembly(size_t instruction_count) {
   struct user_regs_struct regs;
-  if (!trdbg_read_registers(regs)){
+  if (!trdbg_read_registers(regs)) {
     return;
   }
   uint64_t current_rip = regs.rip;
@@ -161,8 +160,7 @@ void Debugger::print_disassembly(size_t instruction_count) {
   uint8_t code_buffer[buffer_size];
 
   for (size_t i = 0; i < buffer_size; i += sizeof(long)) {
-    long word =
-        ptrace(PTRACE_PEEKTEXT, get_debuggee()->get_pid(), current_rip + i, nullptr);
+    long word = ptrace(PTRACE_PEEKTEXT, get_debuggee()->get_pid(), current_rip + i, nullptr);
     if (word == -1 && errno != 0) {
       perror("ptrace peektext failed");
       return;
@@ -177,18 +175,16 @@ void Debugger::print_disassembly(size_t instruction_count) {
   }
 
   cs_insn *insn;
-  size_t count = cs_disasm(handle, code_buffer, buffer_size, current_rip,
-                           instruction_count, &insn);
+  size_t count = cs_disasm(handle, code_buffer, buffer_size, current_rip, instruction_count, &insn);
 
   if (count > 0) {
     procmsg("--- Disassembly ---");
     for (size_t i = 0; i < count; i++) {
       std::string marker = (insn[i].address == current_rip) ? " => " : "    ";
 
-      std::cout << marker << "0x" << std::right << std::setfill('0')
-                << std::setw(16) << std::hex << insn[i].address << ":  "
-                << std::left << std::setfill(' ') << std::setw(10)
-                << insn[i].mnemonic << "  " << insn[i].op_str << std::endl;
+      std::cout << marker << "0x" << std::right << std::setfill('0') << std::setw(16) << std::hex << insn[i].address
+                << ":  " << std::left << std::setfill(' ') << std::setw(10) << insn[i].mnemonic << "  "
+                << insn[i].op_str << std::endl;
     }
     cs_free(insn, count);
   } else {
@@ -313,7 +309,7 @@ int Debugger::trdbg_fork_child() {
 
   regs.rax = 57; // SYS_fork
   regs.rip = syscall_addr;
-  cout<<hex<<syscall_addr<<endl;
+  cout << hex << syscall_addr << endl;
 
   trdbg_write_registers(regs);
 
@@ -338,24 +334,24 @@ int Debugger::trdbg_fork_child() {
       return -1;
     }
 
-    cout << "[TRDBG] Child PID: "<<dec<< child_pid << endl;
+    cout << "[TRDBG] Child PID: " << dec << child_pid << endl;
 
     trdbg_write_registers(saved_regs);
 
     tree->create_child(child_pid);
 
     int status;
-  waitpid(child_pid, &status, 0);
-  if (WIFSTOPPED(status)) {
-    procmsg("Child stopped at startup. Ready for commands.");
-    if (!apply_trace_fork_option(child_pid)) {
-      procmsg("Cannot apply PTRACE_O_TRACEFORK option");
+    waitpid(child_pid, &status, 0);
+    if (WIFSTOPPED(status)) {
+      procmsg("Child stopped at startup. Ready for commands.");
+      if (!apply_trace_fork_option(child_pid)) {
+        procmsg("Cannot apply PTRACE_O_TRACEFORK option");
+      }
+      if (!trdbg_write_registers(saved_regs)) {
+        procmsg("Unable to reset registers for the new child");
+      }
+      return true;
     }
-    if(!trdbg_write_registers(saved_regs)){
-      procmsg("Unable to reset registers for the new child");
-    }
-    return true;
-  }
 
     return static_cast<int>(child_pid);
   }

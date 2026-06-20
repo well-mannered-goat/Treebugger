@@ -15,8 +15,7 @@ void Debugger::handle_step(const vector<string> &args) {
   } else if (err == 1) {
     procmsg("The target process has finished execution and exited.");
   } else if (err == 2) {
-    cerr << "[WARNING] Process stopped unexpectedly or crashed during stepping."
-         << endl;
+    cerr << "[WARNING] Process stopped unexpectedly or crashed during stepping." << endl;
   }
 }
 
@@ -31,9 +30,7 @@ void Debugger::handle_continue(const vector<string> &args) {
   } else if (err == 1) {
     procmsg("The target process has finished execution and exited.");
   } else if (err == 2) {
-    cerr
-        << "[WARNING] Process stopped unexpectedly or crashed during execution."
-        << endl;
+    cerr << "[WARNING] Process stopped unexpectedly or crashed during execution." << endl;
   }
 }
 
@@ -62,9 +59,8 @@ void Debugger::handle_read_registers(const std::vector<std::string> &args) {
 
   int count = 0;
   for (const auto &reg : reg_map) {
-    std::cout << "  " << std::left << std::setfill(' ') << std::setw(7)
-              << reg.name << ": 0x" << std::right << std::setfill('0')
-              << std::setw(16) << std::hex << *reg.value_ptr;
+    std::cout << "  " << std::left << std::setfill(' ') << std::setw(7) << reg.name << ": 0x" << std::right
+              << std::setfill('0') << std::setw(16) << std::hex << *reg.value_ptr;
 
     if (++count % 3 == 0) {
       std::cout << "\n";
@@ -122,8 +118,7 @@ void Debugger::handle_write_registers(const std::vector<std::string> &args) {
 
   // Write modified structural layout back to process
   if (trdbg_write_registers(regs)) {
-    procmsg("Successfully updated %s to %s", target_reg.c_str(),
-            value_str.c_str());
+    procmsg("Successfully updated %s to %s", target_reg.c_str(), value_str.c_str());
   } else {
     cerr << "[ERROR] Failed saving new register state via ptrace." << endl;
   }
@@ -142,8 +137,7 @@ void Debugger::handle_disasm(const std::vector<std::string> &args) {
         return;
       }
     } catch (const std::exception &e) {
-      std::cerr << "[ERROR] Invalid instruction count: " << args[0]
-                << std::endl;
+      std::cerr << "[ERROR] Invalid instruction count: " << args[0] << std::endl;
       return;
     }
   }
@@ -163,8 +157,7 @@ void Debugger::handle_break(const std::vector<std::string> &args) {
   if (args.empty()) {
     struct user_regs_struct regs;
     if (!trdbg_read_registers(regs)) {
-      std::cerr << "[ERROR] Could not read registers to fetch current RIP."
-                << std::endl;
+      std::cerr << "[ERROR] Could not read registers to fetch current RIP." << std::endl;
       return;
     }
     addr = regs.rip;
@@ -180,8 +173,8 @@ void Debugger::handle_break(const std::vector<std::string> &args) {
   if (trdbg_add_breakpoint(addr)) {
     procmsg("Breakpoint set successfully at address 0x%016llx", addr);
   } else {
-    std::cerr << "[WARNING] Breakpoint already exists or failed to set at 0x"
-              << std::hex << addr << std::dec << std::endl;
+    std::cerr << "[WARNING] Breakpoint already exists or failed to set at 0x" << std::hex << addr << std::dec
+              << std::endl;
   }
 }
 
@@ -191,8 +184,7 @@ void Debugger::handle_delete_break(const std::vector<std::string> &args) {
   if (args.empty()) {
     struct user_regs_struct regs;
     if (!trdbg_read_registers(regs)) {
-      std::cerr << "[ERROR] Could not read registers to fetch current RIP."
-                << std::endl;
+      std::cerr << "[ERROR] Could not read registers to fetch current RIP." << std::endl;
       return;
     }
     addr = regs.rip;
@@ -208,17 +200,15 @@ void Debugger::handle_delete_break(const std::vector<std::string> &args) {
   if (trdbg_remove_breakpoint(addr)) {
     procmsg("Breakpoint removed successfully from address 0x%016llx", addr);
   } else {
-    std::cerr << "[ERROR] No active breakpoint found at address 0x" << std::hex
-              << addr << std::dec << std::endl;
+    std::cerr << "[ERROR] No active breakpoint found at address 0x" << std::hex << addr << std::dec << std::endl;
   }
 }
 
-void Debugger::handle_add_checkpoint(const std::vector<std::string> &args){
+void Debugger::handle_add_checkpoint(const std::vector<std::string> &args) {
   int pid = trdbg_fork_child();
-  if(pid > 0){
-      procmsg("Checkpoint added");
-  }
-  else{
+  if (pid > 0) {
+    procmsg("Checkpoint added");
+  } else {
     procmsg("Unable to add checkpoint");
   }
 }
