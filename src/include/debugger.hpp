@@ -15,6 +15,7 @@ struct RegisterDetails {
 
 class Debugger{
     private:
+        int next_checkpoint_id;
         bool trdbg_read_registers(struct user_regs_struct& regs);
         bool trdbg_write_registers(const struct user_regs_struct& regs);
         int trdbg_step_instruction();
@@ -24,7 +25,6 @@ class Debugger{
         bool trdbg_remove_breakpoint(uint64_t addr);
         int trdbg_fork_child();
         void get_syscall_libc_addr();
-        bool trdbg_wait_new_child(int pid);
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
         std::unordered_map<uint64_t, uint8_t> breakpoints;
         uint64_t syscall_addr;

@@ -23,9 +23,11 @@ void procmsg(const char *format, ...) {
 }
 
 Debugger::Debugger(pid_t target_pid) {
-  root = new Debuggee_Node(target_pid);
+  next_checkpoint_id = 0;
+  root = new Debuggee_Node(target_pid, next_checkpoint_id);
+  next_checkpoint_id++;
   curr = root;
-  debuggee = root->dbgee;
+  debuggee = curr->dbgee;
   initialize_commands();
 }
 
@@ -56,12 +58,12 @@ void Debugger::run_debugger() {
   procmsg("Debugger started");
   procmsg("PID is: %d", root->dbgee->get_pid());
 
-  waitpid(root->dbgee->get_pid(), &wait_status, 0);
+  waitpid(debuggee->get_pid(), &wait_status, 0);
 
   if (WIFSTOPPED(wait_status)) {
     get_syscall_libc_addr();
     procmsg("Child stopped at startup. Ready for commands.");
-    if (!apply_trace_fork_option(root->dbgee->get_pid())) {
+    if (!apply_trace_fork_option(debuggee->get_pid())) {
       procmsg("Cannot apply PTRACE_O_TRACEFORK option");
     }
   }
@@ -72,7 +74,7 @@ void Debugger::run_debugger() {
 }
 
 int Debugger::trdbg_step_instruction() {
-  if (ptrace(PTRACE_SINGLESTEP, root->dbgee->get_pid(), nullptr, nullptr) < 0) {
+  if (ptrace(PTRACE_SINGLESTEP, curr->dbgee->get_pid(), nullptr, nullptr) < 0) {
     perror("ptrace singlestep failed");
     return -1;
   }
@@ -245,8 +247,7 @@ bool Debugger::trdbg_remove_breakpoint(uint64_t addr) {
   return true;
 }
 
-static uint64_t get_syscall_addr(uint64_t start_addr, uint64_t end_addr,
-                                 int pid) {
+static uint64_t get_syscall_addr(uint64_t start_addr, uint64_t end_addr, int pid) {
   for (uint64_t addr = start_addr; addr < end_addr; addr = addr + 8) {
     uint64_t word = ptrace(PTRACE_PEEKTEXT, pid, addr, nullptr);
     for (int i = 0; i < 7; i++) {
@@ -341,8 +342,8 @@ int Debugger::trdbg_fork_child() {
 
     trdbg_write_registers(saved_regs);
 
-    Debuggee_Node *child_debuggee = new Debuggee_Node(static_cast<int>(child_pid), curr, nullptr);
-    curr->child = child_debuggee;
+    Debuggee_Node *child_debuggee = new Debuggee_Node(static_cast<int>(child_pid), curr->checkpoint_id + 1, curr);
+    curr->children.push_back(child_debuggee);
     curr = child_debuggee;
     debuggee = curr->dbgee;
 
