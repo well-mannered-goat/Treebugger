@@ -4,8 +4,7 @@
 #include <map>
 #include <unordered_map>
 #include <cstdint>
-#include "debuggee_node.hpp"
-
+#include "checkpoint_tree.hpp"
 void procmsg(const char* format, ...);
 
 struct RegisterDetails {
@@ -15,7 +14,6 @@ struct RegisterDetails {
 
 class Debugger{
     private:
-        int next_checkpoint_id;
         bool trdbg_read_registers(struct user_regs_struct& regs);
         bool trdbg_write_registers(const struct user_regs_struct& regs);
         int trdbg_step_instruction();
@@ -25,6 +23,7 @@ class Debugger{
         bool trdbg_remove_breakpoint(uint64_t addr);
         int trdbg_fork_child();
         void get_syscall_libc_addr();
+        Debuggee* get_debuggee();
         std::vector<RegisterDetails> get_register_map(struct user_regs_struct& regs);
         std::unordered_map<uint64_t, uint8_t> breakpoints;
         uint64_t syscall_addr;
@@ -34,9 +33,7 @@ class Debugger{
     ~Debugger();
     Debugger(pid_t target_pid);
 
-    Debuggee *debuggee;
-    Debuggee_Node *root;
-    Debuggee_Node *curr;
+    Checkpoint_Tree* tree;
 
     using CommandHandler = void (Debugger::*)(const std::vector<std::string>& args);
     map<std::string, CommandHandler> command_map;

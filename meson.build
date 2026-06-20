@@ -9,6 +9,7 @@ capstone_dep = dependency('capstone')
 subdir('src/handlers')
 
 sources = [
+    'src/checkpoint_tree.cpp',
     'src/main.cpp',
     'src/debugger.cpp',
     'src/debuggee.cpp',

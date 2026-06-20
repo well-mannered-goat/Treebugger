@@ -23,15 +23,11 @@ void procmsg(const char *format, ...) {
 }
 
 Debugger::Debugger(pid_t target_pid) {
-  next_checkpoint_id = 0;
-  root = new Debuggee_Node(target_pid, next_checkpoint_id);
-  next_checkpoint_id++;
-  curr = root;
-  debuggee = curr->dbgee;
+  tree = new Checkpoint_Tree(target_pid);
   initialize_commands();
 }
 
-Debugger::~Debugger() { delete root; }
+Debugger::~Debugger() { delete tree; }
 
 void Debugger::initialize_commands() {
   command_map["step"] = &Debugger::handle_step;
@@ -49,6 +45,10 @@ void Debugger::initialize_commands() {
   command_map["checkpoint"] = &Debugger::handle_add_checkpoint;
 }
 
+Debuggee* Debugger::get_debuggee(){
+  return tree->get_current()->dbgee;
+}
+
 static bool apply_trace_fork_option(int pid) {
   int ret = ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK);
   return ret != -1;
@@ -56,14 +56,14 @@ static bool apply_trace_fork_option(int pid) {
 void Debugger::run_debugger() {
   int wait_status;
   procmsg("Debugger started");
-  procmsg("PID is: %d", root->dbgee->get_pid());
+  procmsg("PID is: %d", get_debuggee()->get_pid());
 
-  waitpid(debuggee->get_pid(), &wait_status, 0);
+  waitpid(get_debuggee()->get_pid(), &wait_status, 0);
 
   if (WIFSTOPPED(wait_status)) {
     get_syscall_libc_addr();
     procmsg("Child stopped at startup. Ready for commands.");
-    if (!apply_trace_fork_option(debuggee->get_pid())) {
+    if (!apply_trace_fork_option(get_debuggee()->get_pid())) {
       procmsg("Cannot apply PTRACE_O_TRACEFORK option");
     }
   }
@@ -74,13 +74,13 @@ void Debugger::run_debugger() {
 }
 
 int Debugger::trdbg_step_instruction() {
-  if (ptrace(PTRACE_SINGLESTEP, curr->dbgee->get_pid(), nullptr, nullptr) < 0) {
+  if (ptrace(PTRACE_SINGLESTEP, get_debuggee()->get_pid(), nullptr, nullptr) < 0) {
     perror("ptrace singlestep failed");
     return -1;
   }
 
   int wait_status;
-  if (waitpid(debuggee->get_pid(), &wait_status, 0) < 0) {
+  if (waitpid(get_debuggee()->get_pid(), &wait_status, 0) < 0) {
     perror("waitpid failed");
     return -1;
   }
@@ -99,13 +99,13 @@ int Debugger::trdbg_step_instruction() {
 }
 
 int Debugger::trdbg_continue() {
-  if (ptrace(PTRACE_CONT, debuggee->get_pid(), nullptr, nullptr) < 0) {
+  if (ptrace(PTRACE_CONT, get_debuggee()->get_pid(), nullptr, nullptr) < 0) {
     perror("ptrace continue failed");
     return -1;
   }
 
   int wait_status;
-  if (waitpid(debuggee->get_pid(), &wait_status, 0) < 0) {
+  if (waitpid(get_debuggee()->get_pid(), &wait_status, 0) < 0) {
     perror("waitpid failed");
     return -1;
   }
@@ -124,7 +124,7 @@ int Debugger::trdbg_continue() {
 }
 
 bool Debugger::trdbg_read_registers(struct user_regs_struct &regs) {
-  if (ptrace(PTRACE_GETREGS, debuggee->get_pid(), nullptr, &regs) < 0) {
+  if (ptrace(PTRACE_GETREGS, get_debuggee()->get_pid(), nullptr, &regs) < 0) {
     perror("ptrace GETREGS failed");
     return false;
   }
@@ -132,7 +132,7 @@ bool Debugger::trdbg_read_registers(struct user_regs_struct &regs) {
 }
 
 bool Debugger::trdbg_write_registers(const struct user_regs_struct &regs) {
-  if (ptrace(PTRACE_SETREGS, debuggee->get_pid(), nullptr, &regs) < 0) {
+  if (ptrace(PTRACE_SETREGS, get_debuggee()->get_pid(), nullptr, &regs) < 0) {
     perror("ptrace SETREGS failed");
     return false;
   }
@@ -162,7 +162,7 @@ void Debugger::print_disassembly(size_t instruction_count) {
 
   for (size_t i = 0; i < buffer_size; i += sizeof(long)) {
     long word =
-        ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), current_rip + i, nullptr);
+        ptrace(PTRACE_PEEKTEXT, get_debuggee()->get_pid(), current_rip + i, nullptr);
     if (word == -1 && errno != 0) {
       perror("ptrace peektext failed");
       return;
@@ -205,7 +205,7 @@ bool Debugger::trdbg_add_breakpoint(uint64_t addr) {
   }
 
   errno = 0;
-  long word = ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), addr, nullptr);
+  long word = ptrace(PTRACE_PEEKTEXT, get_debuggee()->get_pid(), addr, nullptr);
   if (word == -1 && errno != 0) {
     perror("ptrace peektext failed during breakpoint addition");
     return false;
@@ -215,7 +215,7 @@ bool Debugger::trdbg_add_breakpoint(uint64_t addr) {
   breakpoints[addr] = original_byte;
 
   long modified_word = (word & ~0xFF) | 0xCC;
-  if (ptrace(PTRACE_POKETEXT, debuggee->get_pid(), addr, modified_word) < 0) {
+  if (ptrace(PTRACE_POKETEXT, get_debuggee()->get_pid(), addr, modified_word) < 0) {
     perror("ptrace poketext failed during breakpoint addition");
     breakpoints.erase(addr);
     return false;
@@ -231,14 +231,14 @@ bool Debugger::trdbg_remove_breakpoint(uint64_t addr) {
   }
 
   errno = 0;
-  long word = ptrace(PTRACE_PEEKTEXT, debuggee->get_pid(), addr, nullptr);
+  long word = ptrace(PTRACE_PEEKTEXT, get_debuggee()->get_pid(), addr, nullptr);
   if (word == -1 && errno != 0) {
     perror("ptrace peektext failed during breakpoint removal");
     return false;
   }
 
   long modified_word = (word & ~0xFF) | it->second;
-  if (ptrace(PTRACE_POKETEXT, debuggee->get_pid(), addr, modified_word) < 0) {
+  if (ptrace(PTRACE_POKETEXT, get_debuggee()->get_pid(), addr, modified_word) < 0) {
     perror("ptrace poketext failed during breakpoint removal");
     return false;
   }
@@ -262,7 +262,7 @@ static uint64_t get_syscall_addr(uint64_t start_addr, uint64_t end_addr, int pid
 
 void Debugger::get_syscall_libc_addr() {
 
-  string maps_path = "/proc/" + to_string(debuggee->get_pid()) + "/maps";
+  string maps_path = "/proc/" + to_string(get_debuggee()->get_pid()) + "/maps";
   ifstream f(maps_path);
   if (!f) {
     cerr << "Error opening maps file\n";
@@ -293,7 +293,7 @@ void Debugger::get_syscall_libc_addr() {
 
     uint64_t size = end - start;
 
-    uint64_t syscall_addr = get_syscall_addr(start, end, debuggee->get_pid());
+    uint64_t syscall_addr = get_syscall_addr(start, end, get_debuggee()->get_pid());
     if (syscall_addr == 0) {
       cout << "Cannot find address of syscall" << endl;
     }
@@ -303,7 +303,7 @@ void Debugger::get_syscall_libc_addr() {
 }
 
 int Debugger::trdbg_fork_child() {
-  int pid = debuggee->get_pid();
+  int pid = get_debuggee()->get_pid();
 
   struct user_regs_struct saved_regs;
   struct user_regs_struct regs;
@@ -338,20 +338,17 @@ int Debugger::trdbg_fork_child() {
       return -1;
     }
 
-    cout << "[TRDBG] Child PID: " << child_pid << endl;
+    cout << "[TRDBG] Child PID: "<<dec<< child_pid << endl;
 
     trdbg_write_registers(saved_regs);
 
-    Debuggee_Node *child_debuggee = new Debuggee_Node(static_cast<int>(child_pid), curr->checkpoint_id + 1, curr);
-    curr->children.push_back(child_debuggee);
-    curr = child_debuggee;
-    debuggee = curr->dbgee;
+    tree->create_child(child_pid);
 
     int status;
   waitpid(child_pid, &status, 0);
   if (WIFSTOPPED(status)) {
     procmsg("Child stopped at startup. Ready for commands.");
-    if (!apply_trace_fork_option(pid)) {
+    if (!apply_trace_fork_option(child_pid)) {
       procmsg("Cannot apply PTRACE_O_TRACEFORK option");
     }
     if(!trdbg_write_registers(saved_regs)){
